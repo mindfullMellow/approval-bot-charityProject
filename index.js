@@ -154,7 +154,7 @@ app.post('/telegram-webhook', async (req, res) => {
         },
         'user-impact-report': {
           'stories-of-change': [],
-          'key-achievements': [],
+          '"key-achivements': [],
           'impact-data': {}
         },
         'user-membership-details': {
