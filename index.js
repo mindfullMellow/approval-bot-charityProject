@@ -137,18 +137,35 @@ app.post('/telegram-webhook', async (req, res) => {
       // Move full data to users collection
       console.log('📝 Moving data to users collection...');
       await db.collection('users').doc(userRecord.uid).set({
-        uid: userRecord.uid,
-        email: userData.email,
-        name: userData.name,
-        country: userData.country,
-        phone: userData['phone-no'],
-        tempPassword,
-        memberSince: new Date(),
-        lifetimeDonation: '$0',
-        lifetimeImpacted: 0,
-        projectsSupported: 0,
-        paymentThreshold: 0,
-        ...userData
+        'user-details': {
+          name: userData.name,
+          country: userData.country,
+          'phone-no': userData['phone-no'] || 'null',
+          email: userData.email,
+          'member-since': new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+          'life-time donation': '$0',
+          'life-impacted': 0,
+          'project-supported': 0,
+          'payment-threshold': 0,
+          createdAt: Date.now().toString()
+        },
+        'user-donation-data': {
+          'user-donations': []
+        },
+        'user-impact-report': {
+          'stories-of-change': [],
+          'key-achievements': [],
+          'impact-data': {}
+        },
+        'user-membership-details': {
+          'stat-cards': [],
+          'payment-details': {},
+          'user-referral-details': {
+            'referral-link': `onelife.org/join/${userData.name.toLowerCase().replace(/\s+/g, '-')}`,
+            'friends-invited': 0,
+            'active-members': 0
+          }
+        }
       });
       console.log('✅ User data saved to users collection');
 
