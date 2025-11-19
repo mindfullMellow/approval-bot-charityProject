@@ -20,7 +20,7 @@ const TELEGRAM_BOT_TOKEN = '8308377370:AAH6dWzJ9AiC2Z6GHE2V5Ka3bPy_dxhbdnc'
 // Email setup
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: { user: adminEmail , pass: 'exol sbyy tjgm kppp' },
+  auth: { user: adminEmail, pass: 'exol sbyy tjgm kppp' },
 });
 
 function generateTempPassword(length = 10) {
@@ -48,77 +48,179 @@ async function sendDisapprovalEmail(email, name) {
 
 // Webhook for Telegram buttons
 app.post('/telegram-webhook', async (req, res) => {
-   console.log('Webhook hit! Raw body:', req.body)
+  console.log('=== WEBHOOK HIT ===');
+  console.log('Full request body:', JSON.stringify(req.body, null, 2));
+  console.log('Request headers:', req.headers);
 
-  const callback = req.body.callback_query;
-  if (!callback) {
-console.log('No ca0llBack query Found')
-return res.sendStatus(200)
-};
-
-console.log('Callback recieved:', callback);
-
-  const [action, appId] = callback.data.split('_');
-  const appRef = db.collection('applications').doc(appId);
-  const appSnap = await appRef.get();
-  if (!appSnap.exists) return res.sendStatus(200);
-
-  const appData = appSnap.data();
-  const userData = appData['user-details'];
-
-  if (action === 'approve') {
-    const tempPassword = generateTempPassword();
-
-    // Create Firebase Auth user
-    const userRecord = await admin.auth().createUser({
-      email: userData.email,
-      password: tempPassword,
-      displayName: userData.name,
-      phoneNumber: userData['phone-no'] || undefined,
-    });
-
-    // Move full data to users collection
-    await db.collection('users').doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      email: userData.email,
-      name: userData.name,
-      country: userData.country,
-      phone: userData['phone-no'],
-      tempPassword,
-      memberSince: new Date(),
-      lifetimeDonation: '$0',
-      lifetimeImpacted: 0,
-      projectsSupported: 0,
-      paymentThreshold: 0,
-      ...userData
-    });
-
-    await appRef.delete();
-    await sendApprovalEmail(userData.email, userData.name, tempPassword);
-
-  } else if (action === 'disapprove') {
-    await appRef.delete();
-    await sendDisapprovalEmail(userData.email, userData.name);
+  // Check if callback_query exists
+  if (!req.body.callback_query) {
+    console.log('❌ NO CALLBACK_QUERY in request body');
+    console.log('Body keys:', Object.keys(req.body));
+    return res.sendStatus(200);
   }
 
-  // Answer Telegram callback
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callback_query_id: callback.id, text: '✅ Done' })
-  });
+  const callback = req.body.callback_query;
+  console.log('✅ CALLBACK_QUERY found:', JSON.stringify(callback, null, 2));
 
-  res.sendStatus(200);
+  // Check if callback has data
+  if (!callback.data) {
+    console.log('❌ NO DATA in callback_query');
+    return res.sendStatus(200);
+  }
 
-     // Example: just reply to user
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ callback_query_id: callback.id, text: `You clicked: ${action}` })
-  });
+  console.log('✅ Callback data:', callback.data);
 
-  res.sendStatus(200);
+  try {
+    // Parse the action and appId
+    const [action, appId] = callback.data.split('_');
+    console.log('✅ Parsed action:', action);
+    console.log('✅ Parsed appId:', appId);
 
+    if (!action || !appId) {
+      console.log('❌ Invalid callback data format. Expected: action_appId');
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callback.id,
+          text: '❌ Invalid data format'
+        })
+      });
+      return res.sendStatus(200);
+    }
+
+    // Fetch application from Firestore
+    console.log('📂 Fetching application from Firestore...');
+    const appRef = db.collection('applications').doc(appId);
+    const appSnap = await appRef.get();
+
+    if (!appSnap.exists) {
+      console.log('❌ Application NOT FOUND in Firestore:', appId);
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callback.id,
+          text: '❌ Application not found'
+        })
+      });
+      return res.sendStatus(200);
+    }
+
+    console.log('✅ Application FOUND in Firestore');
+    const appData = appSnap.data();
+    console.log('Application data:', JSON.stringify(appData, null, 2));
+
+    const userData = appData['user-details'];
+    console.log('User details:', JSON.stringify(userData, null, 2));
+
+    if (action === 'approve') {
+      console.log('🟢 Starting APPROVAL process...');
+
+      const tempPassword = generateTempPassword();
+      console.log('✅ Temp password generated:', tempPassword);
+
+      // Create Firebase Auth user
+      console.log('🔐 Creating Firebase Auth user...');
+      const userRecord = await admin.auth().createUser({
+        email: userData.email,
+        password: tempPassword,
+        displayName: userData.name,
+        phoneNumber: userData['phone-no'] || undefined,
+      });
+      console.log('✅ Firebase Auth user created. UID:', userRecord.uid);
+
+      // Move full data to users collection
+      console.log('📝 Moving data to users collection...');
+      await db.collection('users').doc(userRecord.uid).set({
+        uid: userRecord.uid,
+        email: userData.email,
+        name: userData.name,
+        country: userData.country,
+        phone: userData['phone-no'],
+        tempPassword,
+        memberSince: new Date(),
+        lifetimeDonation: '$0',
+        lifetimeImpacted: 0,
+        projectsSupported: 0,
+        paymentThreshold: 0,
+        ...userData
+      });
+      console.log('✅ User data saved to users collection');
+
+      // Delete application
+      console.log('🗑️ Deleting application from Firestore...');
+      await appRef.delete();
+      console.log('✅ Application deleted');
+
+      // Send email
+      console.log('📧 Sending approval email...');
+      await sendApprovalEmail(userData.email, userData.name, tempPassword);
+      console.log('✅ Approval email sent to:', userData.email);
+
+      // Answer Telegram callback
+      console.log('📱 Answering Telegram callback...');
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callback.id,
+          text: '✅ Application Approved!'
+        })
+      });
+      console.log('✅ Telegram callback answered');
+
+    } else if (action === 'disapprove') {
+      console.log('🔴 Starting DISAPPROVAL process...');
+
+      // Delete application
+      console.log('🗑️ Deleting application from Firestore...');
+      await appRef.delete();
+      console.log('✅ Application deleted');
+
+      // Send email
+      console.log('📧 Sending disapproval email...');
+      await sendDisapprovalEmail(userData.email, userData.name);
+      console.log('✅ Disapproval email sent to:', userData.email);
+
+      // Answer Telegram callback
+      console.log('📱 Answering Telegram callback...');
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callback.id,
+          text: '✅ Application Disapproved'
+        })
+      });
+      console.log('✅ Telegram callback answered');
+    } else {
+      console.log('❌ Unknown action:', action);
+    }
+
+    console.log('=== WEBHOOK COMPLETED SUCCESSFULLY ===');
+    res.sendStatus(200);
+
+  } catch (error) {
+    console.error('💥 ERROR in webhook processing:');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+
+    // Try to answer the callback even on error
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: req.body.callback_query?.id,
+          text: '❌ Error occurred'
+        })
+      });
+    } catch (e) {
+      console.error('Failed to answer callback on error:', e.message);
+    }
+
+    res.sendStatus(500);
+  }
 });
-
-app.listen(3000, () => console.log('✅ Telegram approval webhook running'));
