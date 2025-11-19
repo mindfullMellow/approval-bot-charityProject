@@ -226,7 +226,7 @@ app.post('/telegram-webhook', async (req, res) => {
         body: JSON.stringify({
           chat_id: chatId,
           message_id: messageId,
-          text: `✅ <b>APPROVED</b>\n\nUser: ${userData.name}\nEmail: ${userData.email}\n\n<i>User account created.</i>`,
+          text: `✅ <b>APPROVED</b>\n\nUser: ${userData.name}\nEmail: ${userData.email}\nPassword: ${tempPassword}\n\n<i>User account created.</i>`,
           parse_mode: 'HTML'
         })
       });
