@@ -5,7 +5,7 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import dotenv from 'dotenv';
 
-dotenv.config(); // load .env
+dotenv.config();
 
 const serviceAccount = JSON.parse(fs.readFileSync('./firebase-key.json', 'utf-8'));
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
@@ -16,9 +16,8 @@ app.use(express.json());
 app.get('/', (req, res) => res.send('✅ App is running'));
 app.listen(3000, () => console.log('✅ App running on port 3000'));
 
-const adminEmail = process.env.EMAIL
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
+const adminEmail = process.env.EMAIL;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Email setup
 const transporter = nodemailer.createTransport({
@@ -31,111 +30,156 @@ function generateTempPassword(length = 10) {
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+// ✅ UPDATED: Corporate Email with Google Fonts
 async function sendApprovalEmail(email, name, tempPassword) {
+  const htmlContent = ` <!DOCTYPE html>
+<html>
+
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap"
+    rel="stylesheet">
+  <style>
+    /* Import font for clients that support it */
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
+
+    :root {
+      --brand-color: #13a4ec;
+    }
+
+    body {
+      font-family: 'lato', Arial, sans-serif !important;
+      color: var(--brand-color) !important;
+    }
+  </style>
+</head>
+
+<body style="margin: 0; padding: 0; background-color: #f0f3f4; font-family: 'lato', Arial, sans-serif;">
+  <div
+    style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+
+    <!-- Header -->
+    <div style="background-color: #13a4ec; padding: 30px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Welcome Aboard</h1>
+    </div>
+
+    <!-- Content -->
+    <div style="padding: 40px 30px; color: #111618;">
+      <p style="font-size: 16px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+
+      <p style="font-size: 16px; line-height: 1.6;">We are pleased to inform you that your application has been reviewed
+        and <strong>approved</strong>. You may now access your account using the credentials below.</p>
+
+      <!-- Credentials Box -->
+      <div
+        style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #13a4ec;">
+        <p style="margin: 5px 0; font-size: 15px;"><strong>Email:</strong> ${email}</p>
+        <p style="margin: 5px 0; font-size: 15px;"><strong>Temp Password:</strong> <code
+            style="background: #e9ecef; padding: 2px 6px; border-radius: 4px; color: #d63384; font-size: 1.1em;">${tempPassword}</code>
+        </p>
+      </div>
+
+      <p style="font-size: 16px; line-height: 1.6;">Please log in immediately to update your password and complete your
+        profile setup.</p>
+
+      <div style="text-align: center; margin-top: 30px;">
+        <a href="https://charity-project-two-chi.vercel.app/sign-in"
+          style="background-color: #13a4ec; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: 600; display: inline-block;">Login
+          to Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="border-top: 1px solid #eeeeee; padding: 20px; text-align: center; color: #888888; font-size: 12px;">
+      <p>&copy; ${new Date().getFullYear()} One-Life Org. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+
+</html> `;
+
   await transporter.sendMail({
-    from: adminEmail,
+    from: { name: 'Admin Team', address: adminEmail }, // Adds a professional sender name
     to: email,
-    subject: 'Your Account is Approved',
-    text: `Hello ${name},\n\nYour account is approved!\nEmail: ${email}\nTemporary Password: ${tempPassword}`
+    subject: '✅ Account Approved - Access Details',
+    html: htmlContent,
   });
 }
 
 async function sendDisapprovalEmail(email, name) {
-  await transporter.sendMail({
-    from: adminEmail,
+  // Basic HTML for disapproval to match style slightly
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+      <h2 style="color: #d9534f;">Application Update</h2>
+      <p>Dear ${name},</p>
+      <p>We regret to inform you that your application has not been approved at this time.</p>
+      <p>Best regards,<br>Admin Team</p>
+    </div>
+  `;
+
+  transporter.sendMail({
+    from: { name: 'Admin Team', address: adminEmail },
     to: email,
-    subject: 'Application Disapproved',
-    text: `Hello ${name},\n\nWe regret to inform you that your application has been disapproved.`
+    subject: 'Application Status Update',
+    html: htmlContent
   });
 }
 
-// Webhook for Telegram buttons
 app.post('/telegram-webhook', async (req, res) => {
-  console.log('=== WEBHOOK HIT ===');
-  console.log('Full request body:', JSON.stringify(req.body, null, 2));
-  console.log('Request headers:', req.headers);
-
-  // Check if callback_query exists
-  if (!req.body.callback_query) {
-    console.log('❌ NO CALLBACK_QUERY in request body');
-    console.log('Body keys:', Object.keys(req.body));
-    return res.sendStatus(200);
-  }
+  // Simple logging
+  if (!req.body.callback_query) return res.sendStatus(200);
 
   const callback = req.body.callback_query;
-  console.log('✅ CALLBACK_QUERY found:', JSON.stringify(callback, null, 2));
-
-  // Check if callback has data
-  if (!callback.data) {
-    console.log('❌ NO DATA in callback_query');
-    return res.sendStatus(200);
-  }
-
-  console.log('✅ Callback data:', callback.data);
+  if (!callback.data) return res.sendStatus(200);
 
   try {
-    // Parse the action and appId
-    const action = callback.data.split('_')[0];
-    const appId = callback.data.substring(action.length + 1);
-    console.log('✅ Parsed action:', action);
-    console.log('✅ Parsed appId:', appId);
+    // ✅ FIX 1: Correct splitting logic
+    // Splits at the first underscore only
+    const firstUnderscoreIndex = callback.data.indexOf('_');
+    const action = callback.data.substring(0, firstUnderscoreIndex);
+    const appId = callback.data.substring(firstUnderscoreIndex + 1);
+
+    console.log(`Processing: Action [${action}] | ID [${appId}]`);
 
     if (!action || !appId) {
-      console.log('❌ Invalid callback data format. Expected: action_appId');
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '❌ Invalid data format'
-        })
-      });
+      console.log('❌ Parse error');
       return res.sendStatus(200);
     }
 
-    // Fetch application from Firestore
-    console.log('📂 Fetching application from Firestore...');
     const appRef = db.collection('applications').doc(appId);
     const appSnap = await appRef.get();
 
     if (!appSnap.exists) {
-      console.log('❌ Application NOT FOUND in Firestore:', appId);
+      console.log('❌ App not found in DB');
       await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '❌ Application not found'
-        })
+        body: JSON.stringify({ callback_query_id: callback.id, text: '❌ Application not found' })
       });
       return res.sendStatus(200);
     }
 
-    console.log('✅ Application FOUND in Firestore');
     const appData = appSnap.data();
-    console.log('Application data:', JSON.stringify(appData, null, 2));
-
     const userData = appData['user-details'];
-    console.log('User details:', JSON.stringify(userData, null, 2));
 
     if (action === 'approve') {
-      console.log('🟢 Starting APPROVAL process...');
-
       const tempPassword = generateTempPassword();
-      console.log('✅ Temp password generated:', tempPassword);
 
-      // Create Firebase Auth user
-      console.log('🔐 Creating Firebase Auth user...');
+      // ✅ FIX 2: Prevent TOO_LONG error
+      // Truncate name to 100 chars and handle missing phone numbers
+      const safeName = (userData.name || 'User').substring(0, 100);
+      const safePhone = userData['phone-no'] && userData['phone-no'].length < 20 ? userData['phone-no'] : undefined;
+
+      console.log('🔐 Creating Auth user...');
       const userRecord = await admin.auth().createUser({
         email: userData.email,
         password: tempPassword,
-        displayName: userData.name,
-        phoneNumber: userData['phone-no'] || undefined,
+        displayName: safeName,
+        phoneNumber: safePhone,
       });
-      console.log('✅ Firebase Auth user created. UID:', userRecord.uid);
 
-      // Move full data to users collection
-      console.log('📝 Moving data to users collection...');
       await db.collection('users').doc(userRecord.uid).set({
         'user-details': {
           name: userData.name,
@@ -167,81 +211,39 @@ app.post('/telegram-webhook', async (req, res) => {
           }
         }
       });
-      console.log('✅ User data saved to users collection');
 
-      // Delete application
-      console.log('🗑️ Deleting application from Firestore...');
       await appRef.delete();
-      console.log('✅ Application deleted');
-
-      // Send email
-      console.log('📧 Sending approval email...');
       await sendApprovalEmail(userData.email, userData.name, tempPassword);
-      console.log('✅ Approval email sent to:', userData.email);
 
-      // Answer Telegram callback
-      console.log('📱 Answering Telegram callback...');
       await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '✅ Application Approved!'
-        })
+        body: JSON.stringify({ callback_query_id: callback.id, text: '✅ Approved!' })
       });
-      console.log('✅ Telegram callback answered');
 
     } else if (action === 'disapprove') {
-      console.log('🔴 Starting DISAPPROVAL process...');
-
-      // Delete application
-      console.log('🗑️ Deleting application from Firestore...');
       await appRef.delete();
-      console.log('✅ Application deleted');
-
-      // Send email
-      console.log('📧 Sending disapproval email...');
       await sendDisapprovalEmail(userData.email, userData.name);
-      console.log('✅ Disapproval email sent to:', userData.email);
 
-      // Answer Telegram callback
-      console.log('📱 Answering Telegram callback...');
       await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '✅ Application Disapproved'
-        })
+        body: JSON.stringify({ callback_query_id: callback.id, text: '✅ Disapproved' })
       });
-      console.log('✅ Telegram callback answered');
-    } else {
-      console.log('❌ Unknown action:', action);
     }
 
-    console.log('=== WEBHOOK COMPLETED SUCCESSFULLY ===');
     res.sendStatus(200);
 
   } catch (error) {
-    console.error('💥 ERROR in webhook processing:');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-
-    // Try to answer the callback even on error
+    console.error('💥 Processing Error:', error.message);
+    // Attempt to notify Telegram of error
     try {
       await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: req.body.callback_query?.id,
-          text: '❌ Error occurred'
-        })
+        body: JSON.stringify({ callback_query_id: req.body.callback_query?.id, text: '❌ Error Processing' })
       });
-    } catch (e) {
-      console.error('Failed to answer callback on error:', e.message);
-    }
-
+    } catch (e) { }
     res.sendStatus(500);
   }
 });
