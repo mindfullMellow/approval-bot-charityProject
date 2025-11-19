@@ -98,12 +98,10 @@ async function sendDisapprovalEmail(email, name) {
 app.post('/telegram-webhook', async (req, res) => {
   console.log('=== WEBHOOK HIT ===');
   console.log('Full request body:', JSON.stringify(req.body, null, 2));
-  console.log('Request headers:', req.headers);
 
   // Check if callback_query exists
   if (!req.body.callback_query) {
     console.log('❌ NO CALLBACK_QUERY in request body');
-    console.log('Body keys:', Object.keys(req.body));
     return res.sendStatus(200);
   }
 
@@ -116,10 +114,14 @@ app.post('/telegram-webhook', async (req, res) => {
     return res.sendStatus(200);
   }
 
+  // Extract Chat ID and Message ID for feedback
+  const chatId = callback.message.chat.id;
+  const messageId = callback.message.message_id;
+
   console.log('✅ Callback data:', callback.data);
 
   try {
-    // ✅ FIX 1: Correct String Splitting
+    // ✅ FIX: Correct Parsing logic
     const firstUnderscoreIndex = callback.data.indexOf('_');
     const action = callback.data.substring(0, firstUnderscoreIndex);
     const appId = callback.data.substring(firstUnderscoreIndex + 1);
@@ -129,14 +131,6 @@ app.post('/telegram-webhook', async (req, res) => {
 
     if (!action || !appId) {
       console.log('❌ Invalid callback data format.');
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '❌ Invalid data format'
-        })
-      });
       return res.sendStatus(200);
     }
 
@@ -147,12 +141,14 @@ app.post('/telegram-webhook', async (req, res) => {
 
     if (!appSnap.exists) {
       console.log('❌ Application NOT FOUND in Firestore:', appId);
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+      // Send feedback to Admin
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '❌ Application not found'
+          chat_id: chatId,
+          text: `⚠️ <b>Error:</b> Application ID <code>${appId}</code> not found.`,
+          parse_mode: 'HTML'
         })
       });
       return res.sendStatus(200);
@@ -160,8 +156,6 @@ app.post('/telegram-webhook', async (req, res) => {
 
     console.log('✅ Application FOUND in Firestore');
     const appData = appSnap.data();
-    console.log('Application data:', JSON.stringify(appData, null, 2));
-
     const userData = appData['user-details'];
     console.log('User details:', JSON.stringify(userData, null, 2));
 
@@ -171,9 +165,8 @@ app.post('/telegram-webhook', async (req, res) => {
       const tempPassword = generateTempPassword();
       console.log('✅ Temp password generated:', tempPassword);
 
-      // ✅ FIX 2: Truncate Name to prevent TOO_LONG error
+      // ✅ FIX: Truncate name and check phone
       const safeName = (userData.name || 'User').substring(0, 100);
-      // Also safe check phone number to prevent INVALID_PHONE errors
       const safePhone = userData['phone-no'] && userData['phone-no'].length < 20 ? userData['phone-no'] : undefined;
 
       // Create Firebase Auth user
@@ -186,7 +179,7 @@ app.post('/telegram-webhook', async (req, res) => {
       });
       console.log('✅ Firebase Auth user created. UID:', userRecord.uid);
 
-      // Move full data to users collection (Using your updated structure)
+      // Move full data to users collection
       console.log('📝 Moving data to users collection...');
       await db.collection('users').doc(userRecord.uid).set({
         'user-details': {
@@ -201,14 +194,8 @@ app.post('/telegram-webhook', async (req, res) => {
           'payment-threshold': 0,
           createdAt: Date.now().toString()
         },
-        'user-donation-data': {
-          'user-donations': []
-        },
-        'user-impact-report': {
-          'stories-of-change': [],
-          'key-achivements': [],
-          'impact-data': {}
-        },
+        'user-donation-data': { 'user-donations': [] },
+        'user-impact-report': { 'stories-of-change': [], 'key-achivements': [], 'impact-data': {} },
         'user-membership-details': {
           'stat-cards': [],
           'payment-details': {},
@@ -231,17 +218,18 @@ app.post('/telegram-webhook', async (req, res) => {
       await sendApprovalEmail(userData.email, userData.name, tempPassword);
       console.log('✅ Approval email sent to:', userData.email);
 
-      // Answer Telegram callback
-      console.log('📱 Answering Telegram callback...');
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+      // ✅ NEW: Update Telegram Message (Edit Text)
+      console.log('📱 Updating Telegram Message...');
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '✅ Application Approved!'
+          chat_id: chatId,
+          message_id: messageId,
+          text: `✅ <b>APPROVED</b>\n\nUser: ${userData.name}\nEmail: ${userData.email}\n\n<i>User account created.</i>`,
+          parse_mode: 'HTML'
         })
       });
-      console.log('✅ Telegram callback answered');
 
     } else if (action === 'disapprove') {
       console.log('🔴 Starting DISAPPROVAL process...');
@@ -256,20 +244,26 @@ app.post('/telegram-webhook', async (req, res) => {
       await sendDisapprovalEmail(userData.email, userData.name);
       console.log('✅ Disapproval email sent to:', userData.email);
 
-      // Answer Telegram callback
-      console.log('📱 Answering Telegram callback...');
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+      // ✅ NEW: Update Telegram Message (Edit Text)
+      console.log('📱 Updating Telegram Message...');
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          callback_query_id: callback.id,
-          text: '✅ Application Disapproved'
+          chat_id: chatId,
+          message_id: messageId,
+          text: `❌ <b>DISAPPROVED</b>\n\nUser: ${userData.name}\nEmail: ${userData.email}\n\n<i>Application rejected.</i>`,
+          parse_mode: 'HTML'
         })
       });
-      console.log('✅ Telegram callback answered');
-    } else {
-      console.log('❌ Unknown action:', action);
     }
+
+    // Clear the "loading" state of the button
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callback.id })
+    });
 
     console.log('=== WEBHOOK COMPLETED SUCCESSFULLY ===');
     res.sendStatus(200);
@@ -278,20 +272,20 @@ app.post('/telegram-webhook', async (req, res) => {
     console.error('💥 ERROR in webhook processing:');
     console.error('Error name:', error.name);
     console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
 
-    // Try to answer the callback even on error
+    // ✅ NEW: Send Error Message to Telegram
     try {
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          callback_query_id: req.body.callback_query?.id,
-          text: '❌ Error occurred'
+          chat_id: chatId,
+          text: `💥 <b>SYSTEM ERROR</b>\n\nCould not process request.\n<b>Reason:</b> ${error.message}`,
+          parse_mode: 'HTML'
         })
       });
     } catch (e) {
-      console.error('Failed to answer callback on error:', e.message);
+      console.error('Failed to notify Telegram of error:', e.message);
     }
 
     res.sendStatus(500);
