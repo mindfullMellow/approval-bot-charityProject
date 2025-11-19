@@ -75,7 +75,8 @@ app.post('/telegram-webhook', async (req, res) => {
 
   try {
     // Parse the action and appId
-    const [action, appId] = callback.data.split('_');
+    const action = callback.data.split('_')[0];
+    const appId = callback.data.substring(action.length + 1);
     console.log('✅ Parsed action:', action);
     console.log('✅ Parsed appId:', appId);
 
