@@ -3,6 +3,9 @@ import admin from 'firebase-admin';
 import nodemailer from 'nodemailer';
 import fetch from 'node-fetch';
 import fs from 'fs';
+import dotenv from 'dotenv';
+
+dotenv.config(); // load .env
 
 const serviceAccount = JSON.parse(fs.readFileSync('./firebase-key.json', 'utf-8'));
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
@@ -13,9 +16,9 @@ app.use(express.json());
 app.get('/', (req, res) => res.send('✅ App is running'));
 app.listen(3000, () => console.log('✅ App running on port 3000'));
 
-const adminEmail = 'justonelifeorg@gmail.com'
-const TELEGRAM_CHAT_ID = '5081315710'
-const TELEGRAM_BOT_TOKEN = '8308377370:AAH6dWzJ9AiC2Z6GHE2V5Ka3bPy_dxhbdnc'
+const adminEmail = process.env.EMAIL
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 
 // Email setup
 const transporter = nodemailer.createTransport({
